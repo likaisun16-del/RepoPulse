@@ -16,6 +16,7 @@ import {
   TrendingUp,
 } from "lucide-react";
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { FormEvent, useRef, useState } from "react";
 
 import { RepositoryAvatar } from "@/components/repository-avatar";
@@ -52,6 +53,7 @@ export function RankingExplorer({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(initialError ?? "");
   const requestId = useRef(0);
+  const pathname = usePathname();
 
   async function applyFilters(changes: Partial<RankingFilters>) {
     const nextFilters = { ...filters, ...changes };
@@ -206,7 +208,9 @@ export function RankingExplorer({
             </div>
 
             {error ? <ErrorState message={error} onRetry={() => void applyFilters({})} /> : null}
-            {!error && data?.data.length ? <RankingTable items={data.data} period={filters.period} /> : null}
+            {!error && data?.data.length ? (
+              <RankingTable items={data.data} period={filters.period} returnTo={buildRankingPath(pathname, filters)} />
+            ) : null}
             {!error && !data?.data.length ? <EmptyState /> : null}
 
             {data && data.meta.total > data.meta.limit ? (
@@ -225,7 +229,15 @@ export function RankingExplorer({
   );
 }
 
-function RankingTable({ items, period }: { items: RankingItem[]; period: Period }) {
+function RankingTable({
+  items,
+  period,
+  returnTo,
+}: {
+  items: RankingItem[];
+  period: Period;
+  returnTo: string;
+}) {
   return (
     <>
       <div className="desktop-table-wrap">
@@ -235,7 +247,7 @@ function RankingTable({ items, period }: { items: RankingItem[]; period: Period 
             {items.map((item) => (
               <tr key={item.full_name}>
                 <td><RankCell item={item} /></td>
-                <td><RepositoryCell item={item} /></td>
+                <td><RepositoryCell item={item} returnTo={returnTo} /></td>
                 <td><LanguageBadge language={item.language} /></td>
                 <td className="numeric">{formatCompact(item.total_stars)}</td>
                 <td className={`numeric growth ${item.baseline_available ? "" : "no-growth"}`}>
@@ -243,7 +255,7 @@ function RankingTable({ items, period }: { items: RankingItem[]; period: Period 
                 </td>
                 <td className="numeric rate">{formatPercent(item.growth_rate)}</td>
                 <td className="updated">{formatDate(item.last_updated_at)}</td>
-                <td><Link className="row-link" href={`/repo/${item.owner}/${item.name}`} aria-label={`查看 ${item.name}`}><ArrowUpRight size={17} /></Link></td>
+                <td><Link className="row-link" href={repositoryHref(item, returnTo)} aria-label={`查看 ${item.name}`}><ArrowUpRight size={17} /></Link></td>
               </tr>
             ))}
           </tbody>
@@ -251,7 +263,7 @@ function RankingTable({ items, period }: { items: RankingItem[]; period: Period 
       </div>
       <div className="mobile-ranking-list">
         {items.map((item) => (
-          <Link className="mobile-repo" href={`/repo/${item.owner}/${item.name}`} key={item.full_name}>
+          <Link className="mobile-repo" href={repositoryHref(item, returnTo)} key={item.full_name}>
             <div className="mobile-rank"><RankCell item={item} /></div>
             <RepositoryAvatar owner={item.owner} size={42} />
             <div className="mobile-main"><strong>{item.name}</strong><span><LanguageBadge language={item.language} /> · {formatCompact(item.total_stars)} Star</span></div>
@@ -279,12 +291,12 @@ function RankCell({ item }: { item: RankingItem }) {
   );
 }
 
-function RepositoryCell({ item }: { item: RankingItem }) {
+function RepositoryCell({ item, returnTo }: { item: RankingItem; returnTo: string }) {
   return (
     <div className="repo-cell">
       <RepositoryAvatar owner={item.owner} size={46} />
       <div>
-        <Link href={`/repo/${item.owner}/${item.name}`}>{item.name}</Link>
+        <Link href={repositoryHref(item, returnTo)}>{item.name}</Link>
         <p>{getRepositoryDescription(item)}</p>
       </div>
     </div>
@@ -310,7 +322,14 @@ function Pagination({ page, limit, total, onChange }: { page: number; limit: num
   return <div className="pagination"><button type="button" disabled={page <= 1} onClick={() => onChange(page - 1)} aria-label="上一页"><ChevronLeft size={17} /></button><span>第 {page} / {pages} 页</span><button type="button" disabled={page >= pages} onClick={() => onChange(page + 1)} aria-label="下一页"><ChevronRight size={17} /></button></div>;
 }
 
-function syncUrl(filters: RankingFilters) {
+function repositoryHref(item: RankingItem, returnTo: string) {
+  return {
+    pathname: `/repo/${item.owner}/${item.name}`,
+    query: { returnTo },
+  };
+}
+
+function buildRankingPath(pathname: string, filters: RankingFilters): string {
   const params = new URLSearchParams();
   params.set("period", String(filters.period));
   if (filters.language) params.set("language", filters.language);
@@ -319,5 +338,9 @@ function syncUrl(filters: RankingFilters) {
   if (filters.q) params.set("q", filters.q);
   if (filters.limit && filters.limit !== 15) params.set("limit", String(filters.limit));
   if (filters.page && filters.page > 1) params.set("page", String(filters.page));
-  window.history.replaceState(null, "", `${window.location.pathname}?${params}`);
+  return `${pathname}?${params}`;
+}
+
+function syncUrl(filters: RankingFilters) {
+  window.history.replaceState(null, "", buildRankingPath(window.location.pathname, filters));
 }

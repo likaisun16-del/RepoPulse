@@ -1,7 +1,9 @@
+import base64
+
 import httpx
 import pytest
 
-from app.clients.github import GitHubClient, GitHubRateLimitError
+from app.clients.github import GitHubClient, GitHubClientError, GitHubRateLimitError
 
 
 def test_parses_github_trending_html() -> None:
@@ -67,6 +69,76 @@ def test_reuses_etag_payload_after_not_modified() -> None:
 
     assert requests == 2
     assert first == second
+
+
+def test_prefers_chinese_readme_variant_and_decodes_content() -> None:
+    encoded = base64.b64encode("# 中文 README\n\n项目介绍".encode()).decode()
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("/contents"):
+            return httpx.Response(
+                200,
+                json=[
+                    {"name": "README.md", "type": "file"},
+                    {"name": "README.zh-CN.md", "type": "file"},
+                ],
+            )
+        assert request.url.path.endswith("/contents/README.zh-CN.md")
+        return httpx.Response(
+            200,
+            json={
+                "path": "README.zh-CN.md",
+                "encoding": "base64",
+                "content": encoded,
+                "html_url": "https://github.com/owner/repo/blob/main/README.zh-CN.md",
+            },
+        )
+
+    client = GitHubClient(httpx.MockTransport(handler))
+    try:
+        readme = client.readme("owner/repo")
+    finally:
+        client.close()
+
+    assert readme.path == "README.zh-CN.md"
+    assert readme.content == "# 中文 README\n\n项目介绍"
+    assert readme.html_url.endswith("README.zh-CN.md")
+
+
+def test_readme_falls_back_to_default_endpoint() -> None:
+    encoded = base64.b64encode(b"# Default README").decode()
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("/contents"):
+            return httpx.Response(200, json=[{"name": "src", "type": "dir"}])
+        assert request.url.path.endswith("/readme")
+        return httpx.Response(
+            200,
+            json={"path": "README.md", "encoding": "base64", "content": encoded},
+        )
+
+    client = GitHubClient(httpx.MockTransport(handler))
+    try:
+        readme = client.readme("owner/repo")
+    finally:
+        client.close()
+
+    assert readme.path == "README.md"
+    assert readme.content == "# Default README"
+
+
+def test_readme_raises_for_missing_content() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("/contents"):
+            return httpx.Response(200, json=[])
+        return httpx.Response(404, json={"message": "Not Found"})
+
+    client = GitHubClient(httpx.MockTransport(handler))
+    try:
+        with pytest.raises(GitHubClientError, match="GitHub request failed: 404"):
+            client.readme("owner/missing")
+    finally:
+        client.close()
 
 
 @pytest.mark.parametrize("status_code", [403, 429])

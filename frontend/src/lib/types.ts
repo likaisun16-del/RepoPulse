@@ -10,6 +10,13 @@ export type Repository = components["schemas"]["RepositoryResponse"];
 export type SnapshotPoint = components["schemas"]["SnapshotResponse"];
 export type SnapshotSeriesResponse = components["schemas"]["SnapshotSeriesResponse"];
 
+export interface ReadmeResponse {
+  repository: string;
+  path: string;
+  content: string;
+  html_url: string;
+}
+
 export interface RankingFilters {
   period: Period;
   language?: string;

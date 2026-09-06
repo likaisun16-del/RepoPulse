@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_session
-from app.schemas import ChartRange, RepositoryResponse, SnapshotSeriesResponse
+from app.schemas import ChartRange, ReadmeResponse, RepositoryResponse, SnapshotSeriesResponse
 from app.services.catalog import CatalogService
 
 router = APIRouter(tags=["repositories"])
@@ -17,6 +17,15 @@ async def get_repository(
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> RepositoryResponse:
     return await CatalogService(session).repository(owner, name)
+
+
+@router.get("/repos/{owner}/{name}/readme", response_model=ReadmeResponse)
+async def get_repository_readme(
+    owner: str,
+    name: str,
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> ReadmeResponse:
+    return await CatalogService(session).readme(owner, name)
 
 
 @router.get("/repos/{owner}/{name}/snapshots", response_model=SnapshotSeriesResponse)

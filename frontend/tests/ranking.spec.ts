@@ -63,7 +63,24 @@ test("移动端榜单无横向溢出", async ({ page }, testInfo) => {
 test("详情页显示本地化简介和仓库名", async ({ page }) => {
   await page.goto("/repo/fastapi/fastapi");
 
-  await expect(page.getByRole("heading", { name: "fastapi" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "fastapi", exact: true })).toBeVisible();
   await expect(page.locator(".repo-title span")).toHaveText("fastapi");
   await expect(page.locator(".repo-description")).toContainText("现代、高性能且易于学习");
+});
+
+test("详情页返回时恢复榜单页码和筛选条件", async ({ page }) => {
+  const returnTo = "/?period=14&language=Python&limit=25&page=2";
+  await page.goto(`/repo/fastapi/fastapi?returnTo=${encodeURIComponent(returnTo)}`);
+
+  await page.getByRole("link", { name: "返回增长榜" }).click();
+  await expect(page).toHaveURL(/period=14.*language=Python.*limit=25.*page=2/);
+  await expect(page.getByRole("heading", { name: "14 天增长排行" })).toBeVisible();
+});
+
+test("详情页显示 README 内容和来源", async ({ page }) => {
+  await page.goto("/repo/fastapi/fastapi");
+
+  await expect(page.getByRole("heading", { name: "README" })).toBeVisible();
+  await expect(page.locator(".readme-content")).not.toBeEmpty();
+  await expect(page.locator(".readme-source")).toBeVisible();
 });

@@ -3,6 +3,7 @@ import type {
   FilterResponse,
   RankingFilters,
   RankingResponse,
+  ReadmeResponse,
   Repository,
   SnapshotSeriesResponse,
 } from "@/lib/types";
@@ -54,6 +55,10 @@ export async function fetchFilters(): Promise<FilterResponse> {
 
 export async function fetchRepository(owner: string, name: string): Promise<Repository> {
   return getJson<Repository>(`${SERVER_API_BASE}/api/v1/repos/${owner}/${name}`);
+}
+
+export async function fetchReadme(owner: string, name: string): Promise<ReadmeResponse> {
+  return getJson<ReadmeResponse>(`${SERVER_API_BASE}/api/v1/repos/${owner}/${name}/readme`, 3600);
 }
 
 export async function fetchSnapshots(

@@ -1,9 +1,11 @@
+import asyncio
 from collections import Counter
 
 from fastapi import HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.cache import response_cache
+from app.clients.github import GitHubClient, GitHubClientError, GitHubRateLimitError
 from app.config import get_settings
 from app.models import RankingItem, Repository
 from app.repositories.catalog import CatalogRepository
@@ -15,6 +17,7 @@ from app.schemas import (
     RankingItemResponse,
     RankingMeta,
     RankingResponse,
+    ReadmeResponse,
     RepositoryResponse,
     SnapshotResponse,
     SnapshotSeriesResponse,
@@ -85,6 +88,38 @@ class CatalogService:
         if repository is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="项目不存在")
         return RepositoryResponse.model_validate(repository)
+
+    async def readme(self, owner: str, name: str) -> ReadmeResponse:
+        full_name = f"{owner}/{name}"
+        cache_key = f"readme:v1:{full_name.lower()}"
+        cached = await response_cache.get(cache_key)
+        if cached:
+            return ReadmeResponse.model_validate(cached)
+
+        client = GitHubClient()
+        try:
+            readme = await asyncio.to_thread(client.readme, full_name)
+        except GitHubRateLimitError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="GitHub README 暂时无法获取",
+            ) from exc
+        except GitHubClientError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="README 暂不可用",
+            ) from exc
+        finally:
+            client.close()
+
+        response = ReadmeResponse(
+            repository=readme.repository,
+            path=readme.path,
+            content=readme.content,
+            html_url=readme.html_url,
+        )
+        await response_cache.set(cache_key, response.model_dump(mode="json"), ttl_seconds=3600)
+        return response
 
     async def snapshot_series(
         self, owner: str, name: str, range_name: ChartRange

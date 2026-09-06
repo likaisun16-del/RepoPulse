@@ -1,7 +1,9 @@
+import base64
 from dataclasses import dataclass
 from itertools import cycle
 from threading import Lock
 from typing import Any
+from urllib.parse import quote
 
 import httpx
 from bs4 import BeautifulSoup
@@ -36,12 +38,20 @@ class GitHubRepositoryData:
     created_at: str | None
 
 
+@dataclass(frozen=True)
+class GitHubReadmeData:
+    repository: str
+    path: str
+    content: str
+    html_url: str
+
+
 class GitHubClient:
     def __init__(self, transport: httpx.BaseTransport | None = None) -> None:
         settings = get_settings()
         self._tokens = cycle(settings.github_tokens or [""])
         self._token_lock = Lock()
-        self._etag_cache: dict[str, tuple[str, dict[str, Any]]] = {}
+        self._etag_cache: dict[str, tuple[str, Any]] = {}
         self._client = httpx.Client(
             base_url="https://api.github.com",
             timeout=20,
@@ -113,7 +123,72 @@ class GitHubClient:
             created_at=payload.get("created_at"),
         )
 
+    def readme(self, full_name: str) -> GitHubReadmeData:
+        root_entries = self._readme_root_entries(full_name)
+        readme_path = self._select_readme_path(root_entries)
+        if readme_path:
+            path = quote(readme_path, safe="/")
+            payload = self._get_json(f"/repos/{full_name}/contents/{path}")
+        else:
+            payload = self._get_json(f"/repos/{full_name}/readme")
+
+        return GitHubReadmeData(
+            repository=full_name,
+            path=str(payload.get("path") or "README.md"),
+            content=self._decode_readme_content(payload),
+            html_url=str(payload.get("html_url") or f"https://github.com/{full_name}"),
+        )
+
+    def _readme_root_entries(self, full_name: str) -> list[dict[str, Any]]:
+        try:
+            payload = self._get_payload(f"/repos/{full_name}/contents")
+        except GitHubRateLimitError:
+            raise
+        except GitHubClientError:
+            return []
+        if not isinstance(payload, list):
+            return []
+        return [entry for entry in payload if isinstance(entry, dict)]
+
+    @staticmethod
+    def _select_readme_path(entries: list[dict[str, Any]]) -> str | None:
+        preferred_names = (
+            "readme.zh-cn.md",
+            "readme.zh.md",
+            "readme.zhhans.md",
+            "readme_cn.md",
+            "readme-cn.md",
+        )
+        entries_by_name = {
+            str(entry.get("name", "")).lower(): str(entry["name"])
+            for entry in entries
+            if entry.get("type") == "file" and entry.get("name")
+        }
+        return next(
+            (entries_by_name[name] for name in preferred_names if name in entries_by_name),
+            None,
+        )
+
+    @staticmethod
+    def _decode_readme_content(payload: dict[str, Any]) -> str:
+        content = payload.get("content")
+        if not isinstance(content, str) or not content.strip():
+            raise GitHubClientError("GitHub README content unavailable")
+        encoding = str(payload.get("encoding", "")).lower()
+        if encoding != "base64":
+            return content
+        try:
+            return base64.b64decode("".join(content.split())).decode("utf-8")
+        except (ValueError, UnicodeDecodeError) as exc:
+            raise GitHubClientError("GitHub README content is invalid") from exc
+
     def _get_json(self, path: str, params: dict[str, Any] | None = None) -> dict[str, Any]:
+        payload = self._get_payload(path, params)
+        if not isinstance(payload, dict):
+            raise GitHubClientError("GitHub API returned an unexpected response")
+        return payload
+
+    def _get_payload(self, path: str, params: dict[str, Any] | None = None) -> Any:
         headers = self._auth_headers()
         cache_key = f"{path}:{params or {}}"
         cached = self._etag_cache.get(cache_key)
@@ -124,7 +199,7 @@ class GitHubClient:
             return cached[1]
         self._raise_for_status(response)
         payload = response.json()
-        if not isinstance(payload, dict):
+        if not isinstance(payload, (dict, list)):
             raise GitHubClientError("GitHub API returned an unexpected response")
         if etag := response.headers.get("etag"):
             self._etag_cache[cache_key] = (etag, payload)

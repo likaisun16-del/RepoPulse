@@ -69,6 +69,13 @@ class RepositoryResponse(BaseModel):
     history_available_from: datetime
 
 
+class ReadmeResponse(BaseModel):
+    repository: str
+    path: str
+    content: str
+    html_url: str
+
+
 class SnapshotResponse(BaseModel):
     captured_at: datetime
     stars_count: int

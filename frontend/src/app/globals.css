@@ -991,6 +991,161 @@ a {
   text-align: right;
 }
 
+.readme-section {
+  margin-top: 22px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: white;
+  box-shadow: var(--shadow);
+}
+
+.readme-source {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  max-width: 45%;
+  overflow: hidden;
+  color: var(--blue);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.readme-content {
+  overflow-x: auto;
+  padding: 26px 28px 32px;
+  color: #344054;
+  font-size: 14px;
+  line-height: 1.75;
+}
+
+.readme-content > :first-child {
+  margin-top: 0;
+}
+
+.readme-content > :last-child {
+  margin-bottom: 0;
+}
+
+.readme-content h1,
+.readme-content h2,
+.readme-content h3,
+.readme-content h4 {
+  margin: 1.5em 0 0.6em;
+  color: var(--ink);
+  line-height: 1.35;
+}
+
+.readme-content h1 { font-size: 25px; }
+.readme-content h2 { font-size: 21px; }
+.readme-content h3 { font-size: 18px; }
+.readme-content h4 { font-size: 16px; }
+
+.readme-content p,
+.readme-content ul,
+.readme-content ol,
+.readme-content blockquote {
+  margin: 0 0 1em;
+}
+
+.readme-content ul,
+.readme-content ol {
+  padding-left: 1.6em;
+}
+
+.readme-content li + li {
+  margin-top: 0.35em;
+}
+
+.readme-content a {
+  color: var(--blue);
+  text-decoration: underline;
+  text-decoration-color: #bfdbfe;
+  text-underline-offset: 2px;
+}
+
+.readme-content img {
+  max-width: 100%;
+  height: auto;
+}
+
+.readme-content blockquote {
+  padding: 4px 16px;
+  color: var(--muted);
+  border-left: 3px solid #bfdbfe;
+  background: #f8fafc;
+}
+
+.readme-content code {
+  padding: 2px 5px;
+  color: #9f1239;
+  border-radius: 4px;
+  background: #fff1f2;
+  font-family: "SFMono-Regular", Consolas, monospace;
+  font-size: 0.9em;
+}
+
+.readme-content pre {
+  overflow-x: auto;
+  margin: 0 0 1.25em;
+  padding: 16px 18px;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  background: #f8fafc;
+}
+
+.readme-content pre code {
+  padding: 0;
+  color: #334155;
+  background: transparent;
+  font-size: 12px;
+  white-space: pre;
+}
+
+.readme-content table {
+  display: block;
+  width: 100%;
+  overflow-x: auto;
+  margin: 0 0 1.25em;
+  border-collapse: collapse;
+}
+
+.readme-content th,
+.readme-content td {
+  min-width: 110px;
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  text-align: left;
+}
+
+.readme-content th {
+  color: var(--ink);
+  background: #f8fafc;
+  font-weight: 700;
+}
+
+.readme-empty {
+  display: grid;
+  min-height: 180px;
+  place-items: center;
+  align-content: center;
+  gap: 8px;
+  padding: 32px 20px;
+  color: var(--muted);
+  text-align: center;
+}
+
+.readme-empty strong {
+  color: var(--ink);
+  font-size: 15px;
+}
+
+.readme-empty p {
+  margin: 0;
+  font-size: 13px;
+}
+
 .repo-metadata {
   margin-top: 36px;
 }
@@ -1521,6 +1676,15 @@ a {
 
   .chart-canvas {
     height: 280px;
+  }
+
+  .readme-source {
+    max-width: 100%;
+  }
+
+  .readme-content {
+    padding: 20px 16px 24px;
+    font-size: 13px;
   }
 
   .repo-metadata dl {
