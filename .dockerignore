@@ -1,0 +1,17 @@
+.git
+.github
+.venv
+backend/.venv
+frontend/node_modules
+frontend/.next
+frontend/test-results
+frontend/playwright-report
+**/__pycache__
+**/*.py[cod]
+**/*.db
+**/*.sqlite3
+**/.pytest_cache
+**/.mypy_cache
+**/.ruff_cache
+**/*.tsbuildinfo
+*.egg-info

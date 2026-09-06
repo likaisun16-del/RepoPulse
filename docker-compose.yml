@@ -1,0 +1,83 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: repopulse
+      POSTGRES_USER: repopulse
+      POSTGRES_PASSWORD: repopulse
+    ports:
+      - "5432:5432"
+    volumes:
+      - repopulse-postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U repopulse"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  api:
+    build:
+      context: ./backend
+    environment: &backend-env
+      ENVIRONMENT: production
+      SEED_DEMO_DATA: ${SEED_DEMO_DATA:-true}
+      DATABASE_URL: postgresql+psycopg_async://repopulse:repopulse@postgres:5432/repopulse
+      SYNC_DATABASE_URL: postgresql+psycopg://repopulse:repopulse@postgres:5432/repopulse
+      REDIS_URL: redis://redis:6379/0
+      FRONTEND_ORIGINS: http://localhost:3000,http://127.0.0.1:3000
+      GITHUB_TOKEN: ${GITHUB_TOKEN:-}
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  worker:
+    build:
+      context: .
+      dockerfile: worker/Dockerfile
+    environment: *backend-env
+    depends_on:
+      api:
+        condition: service_started
+      redis:
+        condition: service_healthy
+
+  beat:
+    build:
+      context: .
+      dockerfile: worker/Dockerfile
+    command: ["celery", "-A", "worker.app.celery_app.celery_app", "beat", "--loglevel=INFO"]
+    environment: *backend-env
+    depends_on:
+      worker:
+        condition: service_started
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        NEXT_PUBLIC_API_BASE_URL: http://localhost:8000
+    environment:
+      API_BASE_URL: http://api:8000
+      NEXT_PUBLIC_API_BASE_URL: http://localhost:8000
+    ports:
+      - "3000:3000"
+    depends_on:
+      api:
+        condition: service_started
+
+volumes:
+  repopulse-postgres:

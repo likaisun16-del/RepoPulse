@@ -1,0 +1,1 @@
+"""RepoPulse FastAPI application."""
