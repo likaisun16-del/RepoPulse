@@ -1,5 +1,8 @@
+import { cookies } from "next/headers";
+
 import { RankingExplorer } from "@/components/ranking-explorer";
 import { fetchFilters, fetchRankings } from "@/lib/api";
+import { METHODOLOGY_COOKIE } from "@/lib/preferences";
 import type { FilterResponse, Period, RankingFilters } from "@/lib/types";
 
 type SearchParams = Record<string, string | string[] | undefined>;
@@ -7,7 +10,7 @@ type SearchParams = Record<string, string | string[] | undefined>;
 const EMPTY_FILTERS: FilterResponse = { languages: [], topics: [] };
 
 export async function RankingPage({ searchParams }: { searchParams: Promise<SearchParams> }) {
-  const params = await searchParams;
+  const [params, cookieStore] = await Promise.all([searchParams, cookies()]);
   const filters = parseFilters(params);
   const [rankingResult, filterResult] = await Promise.allSettled([
     fetchRankings(filters),
@@ -19,6 +22,7 @@ export async function RankingPage({ searchParams }: { searchParams: Promise<Sear
       initialData={rankingResult.status === "fulfilled" ? rankingResult.value : null}
       filterOptions={filterResult.status === "fulfilled" ? filterResult.value : EMPTY_FILTERS}
       initialFilters={filters}
+      showOnboarding={!cookieStore.has(METHODOLOGY_COOKIE)}
       initialError={
         rankingResult.status === "rejected"
           ? rankingResult.reason instanceof Error

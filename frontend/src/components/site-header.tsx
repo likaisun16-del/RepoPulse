@@ -1,8 +1,10 @@
 "use client";
 
-import { Activity, BookOpen, Github } from "lucide-react";
+import { Activity, Github, TrendingUp } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+
+import { ThemeToggle } from "@/components/theme-toggle";
 
 export function SiteHeader() {
   const pathname = usePathname();
@@ -19,25 +21,24 @@ export function SiteHeader() {
         </Link>
         <nav className="main-nav" aria-label="主导航">
           <Link className={rankingActive ? "active" : ""} href="/ranking?period=7">
+            <TrendingUp size={15} />
             增长榜
           </Link>
-          <Link className={pathname === "/methodology" ? "active" : ""} href="/methodology">
-            <BookOpen size={15} />
-            数据口径
-          </Link>
         </nav>
-        <a
-          className="icon-link"
-          href="https://github.com"
-          target="_blank"
-          rel="noreferrer"
-          aria-label="访问 GitHub"
-          title="访问 GitHub"
-        >
-          <Github size={19} />
-        </a>
+        <div className="header-actions">
+          <ThemeToggle />
+          <a
+            className="icon-link"
+            href="https://github.com"
+            target="_blank"
+            rel="noreferrer"
+            aria-label="访问 GitHub"
+            title="访问 GitHub"
+          >
+            <Github size={19} />
+          </a>
+        </div>
       </div>
     </header>
   );
 }
-

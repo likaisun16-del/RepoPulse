@@ -1,7 +1,61 @@
-import { expect, test } from "@playwright/test";
+import { expect, type Page, test } from "@playwright/test";
+
+async function enterRanking(page: Page) {
+  const startButton = page.getByRole("button", { name: "现在开始" });
+  if (await startButton.isVisible()) await startButton.click();
+}
+
+test("首次进入先介绍数据口径，确认后记住选择", async ({ page }, testInfo) => {
+  await page.goto("/?period=7");
+
+  const dialog = page.getByRole("dialog", { name: "先了解数据，再发现增长。" });
+  await expect(dialog).toBeVisible();
+  await expect(dialog.getByText("净增长 = 截止 Star − 起点 Star")).toBeVisible();
+  await page.screenshot({
+    path: testInfo.outputPath("methodology-onboarding.png"),
+    fullPage: false,
+    animations: "disabled",
+    caret: "initial",
+  });
+  await dialog.getByRole("button", { name: "现在开始" }).click();
+  await expect(dialog).toBeHidden();
+  await expect(page.getByRole("heading", { name: "开源项目增长榜" })).toBeVisible();
+
+  await page.reload();
+  await expect(dialog).toBeHidden();
+});
+
+test("小灯开关可切换并记住深浅主题", async ({ page }, testInfo) => {
+  await page.addInitScript(() => {
+    if (sessionStorage.getItem("theme-test-initialized")) return;
+    localStorage.setItem("repopulse-theme", "light");
+    sessionStorage.setItem("theme-test-initialized", "1");
+  });
+  await page.goto("/?period=7");
+  await enterRanking(page);
+
+  const themeToggle = page.getByRole("button", { name: "切换深色/浅色模式" });
+  const initialTheme = await page.locator("html").getAttribute("data-theme");
+  await themeToggle.click();
+  await expect(page.locator("html")).toHaveAttribute(
+    "data-theme",
+    initialTheme === "dark" ? "light" : "dark",
+  );
+  await page.screenshot({
+    path: testInfo.outputPath("ranking-dark.png"),
+    fullPage: true,
+    animations: "disabled",
+    caret: "initial",
+  });
+
+  const selectedTheme = await page.locator("html").getAttribute("data-theme");
+  await page.reload();
+  await expect(page.locator("html")).toHaveAttribute("data-theme", selectedTheme ?? "light");
+});
 
 test("榜单支持周期切换、筛选和详情跳转", async ({ page }, testInfo) => {
   await page.goto("/?period=7");
+  await enterRanking(page);
 
   await expect(page.getByRole("heading", { name: "开源项目增长榜" })).toBeVisible();
   await expect(page.getByRole("button", { name: "7 天" })).toHaveAttribute(
@@ -43,6 +97,7 @@ test("榜单支持周期切换、筛选和详情跳转", async ({ page }, testIn
 test("移动端榜单无横向溢出", async ({ page }, testInfo) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/?period=30");
+  await enterRanking(page);
 
   await expect(page.locator(".mobile-ranking-list")).toBeVisible();
   await expect(page.locator(".desktop-table-wrap")).toBeHidden();
@@ -80,7 +135,14 @@ test("详情页返回时恢复榜单页码和筛选条件", async ({ page }) => 
 test("详情页显示 README 内容和来源", async ({ page }) => {
   await page.goto("/repo/fastapi/fastapi");
 
-  await expect(page.getByRole("heading", { name: "README" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "项目文档", exact: true })).toBeVisible();
   await expect(page.locator(".readme-content")).not.toBeEmpty();
-  await expect(page.locator(".readme-source")).toBeVisible();
+  const sourceLink = page.getByRole("link", { name: "在 GitHub 查看 README.md" });
+  await expect(sourceLink).toBeVisible();
+  await expect(sourceLink).toHaveAttribute(
+    "href",
+    "https://github.com/fastapi/fastapi/blob/master/README.md",
+  );
+  await expect(sourceLink).toHaveAttribute("target", "_blank");
+  await expect(sourceLink).toHaveAttribute("rel", "noreferrer");
 });

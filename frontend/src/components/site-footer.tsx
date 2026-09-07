@@ -1,5 +1,4 @@
 import { Activity } from "lucide-react";
-import Link from "next/link";
 
 export function SiteFooter() {
   return (
@@ -11,7 +10,7 @@ export function SiteFooter() {
           <span className="footer-note">用可解释的数据，发现正在增长的开源项目。</span>
         </div>
         <div className="footer-links">
-          <Link href="/methodology">数据口径</Link>
+          <span>UTC 快照 · 净增长口径</span>
           <a href="https://github.com/trending" target="_blank" rel="noreferrer">
             GitHub Trending
           </a>
@@ -20,4 +19,3 @@ export function SiteFooter() {
     </footer>
   );
 }
-

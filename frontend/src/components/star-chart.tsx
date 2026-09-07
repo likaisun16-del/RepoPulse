@@ -81,35 +81,41 @@ export function StarChart({ owner, name, initialData }: StarChartProps) {
       <div className="chart-canvas">
         <ResponsiveContainer width="100%" height="100%">
           <AreaChart data={chartData} margin={{ top: 14, right: 12, left: 0, bottom: 0 }}>
-            <CartesianGrid stroke="#e8ebf0" strokeDasharray="3 5" vertical={false} />
+            <CartesianGrid stroke="var(--border)" strokeDasharray="3 5" vertical={false} />
             <XAxis
               dataKey="label"
               axisLine={false}
               tickLine={false}
               minTickGap={50}
-              tick={{ fill: "#7c8493", fontSize: 11 }}
+              tick={{ fill: "var(--faint)", fontSize: 11 }}
             />
             <YAxis
               axisLine={false}
               tickLine={false}
               width={54}
               tickFormatter={formatCompact}
-              tick={{ fill: "#7c8493", fontSize: 11 }}
+              tick={{ fill: "var(--faint)", fontSize: 11 }}
               domain={["dataMin", "dataMax"]}
             />
             <Tooltip
-              contentStyle={{ border: "1px solid #e4e7ec", borderRadius: 6, boxShadow: "0 8px 24px rgba(20, 28, 45, .08)" }}
+              contentStyle={{
+                color: "var(--ink)",
+                border: "1px solid var(--border)",
+                borderRadius: 10,
+                background: "var(--surface)",
+                boxShadow: "var(--shadow-sm)",
+              }}
               formatter={(value) => [formatNumber(Number(value)), "Star"]}
-              labelStyle={{ color: "#667085", marginBottom: 6 }}
+              labelStyle={{ color: "var(--muted)", marginBottom: 6 }}
             />
             <Area
               type="monotone"
               dataKey="stars"
-              stroke="#2563eb"
+              stroke="var(--blue)"
               strokeWidth={2.5}
-              fill="#dbeafe"
+              fill="var(--blue-soft)"
               fillOpacity={0.68}
-              activeDot={{ r: 4, fill: "#2563eb", stroke: "white", strokeWidth: 2 }}
+              activeDot={{ r: 4, fill: "var(--blue)", stroke: "var(--surface)", strokeWidth: 2 }}
             />
           </AreaChart>
         </ResponsiveContainer>
@@ -118,4 +124,3 @@ export function StarChart({ owner, name, initialData }: StarChartProps) {
     </div>
   );
 }
-

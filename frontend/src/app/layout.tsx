@@ -1,8 +1,10 @@
 import type { Metadata } from "next";
 import { Inter, Noto_Sans_SC } from "next/font/google";
+import Script from "next/script";
 
 import { SiteFooter } from "@/components/site-footer";
 import { SiteHeader } from "@/components/site-header";
+import { THEME_STORAGE_KEY } from "@/lib/preferences";
 
 import "./globals.css";
 
@@ -12,6 +14,22 @@ const notoSansSC = Noto_Sans_SC({
   variable: "--font-noto-sans-sc",
   display: "swap",
 });
+
+const THEME_INITIALIZER = `
+  (function () {
+    var savedTheme = null;
+    try {
+      savedTheme = localStorage.getItem("${THEME_STORAGE_KEY}");
+    } catch (error) {
+      savedTheme = null;
+    }
+    var theme = savedTheme === "light" || savedTheme === "dark"
+      ? savedTheme
+      : (window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+    document.documentElement.dataset.theme = theme;
+    document.documentElement.style.colorScheme = theme;
+  })();
+`;
 
 export const metadata: Metadata = {
   metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000"),
@@ -27,11 +45,12 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang="zh-CN" data-scroll-behavior="smooth">
+    <html lang="zh-CN" data-scroll-behavior="smooth" suppressHydrationWarning>
       <body className={`${inter.variable} ${notoSansSC.variable}`}>
         <SiteHeader />
         {children}
         <SiteFooter />
+        <Script id="theme-initializer" strategy="beforeInteractive">{THEME_INITIALIZER}</Script>
       </body>
     </html>
   );

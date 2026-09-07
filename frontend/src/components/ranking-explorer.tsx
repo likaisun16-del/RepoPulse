@@ -19,6 +19,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { FormEvent, useRef, useState } from "react";
 
+import { MethodologyOnboarding } from "@/components/methodology-onboarding";
 import { RepositoryAvatar } from "@/components/repository-avatar";
 import { rankingApiUrl } from "@/lib/api";
 import { formatCompact, formatDate, formatNumber, formatPercent, rankMovement } from "@/lib/format";
@@ -30,6 +31,7 @@ interface RankingExplorerProps {
   filterOptions: FilterResponse;
   initialFilters: RankingFilters;
   initialError?: string;
+  showOnboarding: boolean;
 }
 
 const PERIODS: Period[] = [1, 7, 14, 30];
@@ -46,6 +48,7 @@ export function RankingExplorer({
   filterOptions,
   initialFilters,
   initialError,
+  showOnboarding,
 }: RankingExplorerProps) {
   const [data, setData] = useState(initialData);
   const [filters, setFilters] = useState(initialFilters);
@@ -90,6 +93,7 @@ export function RankingExplorer({
 
   return (
     <main>
+      <MethodologyOnboarding openInitially={showOnboarding} />
       <section className="page-intro">
         <div className="shell intro-grid">
           <div>
