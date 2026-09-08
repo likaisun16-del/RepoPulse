@@ -4,24 +4,32 @@ from contextlib import contextmanager
 from datetime import UTC, datetime, timedelta
 from typing import Any, cast
 
+import httpx
+from app.clients.github import GitHubClient, GitHubClientError, GitHubRateLimitError
+from app.config import get_settings
+from app.database import get_sync_session
+from app.models import (
+    DiscoveryRun,
+    JobRun,
+    RankingItem,
+    RankingRun,
+    Repository,
+    RepoSnapshot,
+)
+from app.ranking.calculator import RepositorySeries, SnapshotPoint, calculate_ranking
 from celery import Task, chain
 from redis import Redis
 from redis.exceptions import LockError, RedisError
 from sqlalchemy import delete, select
 from sqlalchemy.engine import CursorResult
 
-from app.clients.github import GitHubClient, GitHubClientError, GitHubRateLimitError
-from app.config import get_settings
-from app.database import get_sync_session
-from app.models import DiscoveryRun, JobRun, RankingItem, RankingRun, Repository, RepoSnapshot
-from app.ranking.calculator import RepositorySeries, SnapshotPoint, calculate_ranking
 from worker.app.celery_app import celery_app
 
 logger = logging.getLogger(__name__)
 
 
 class GitHubTask(Task):
-    autoretry_for = (GitHubRateLimitError,)
+    autoretry_for = (GitHubRateLimitError, httpx.RequestError)
     retry_backoff = True
     retry_backoff_max = 900
     retry_jitter = True
@@ -232,6 +240,8 @@ def _capture_snapshots(captured_at: datetime) -> int:
                     continue
                 try:
                     data = client.repository(repository.full_name)
+                except GitHubRateLimitError:
+                    raise
                 except GitHubClientError:
                     logger.warning(
                         "Snapshot capture failed", extra={"repository": repository.full_name}
@@ -249,7 +259,8 @@ def _capture_snapshots(captured_at: datetime) -> int:
                     )
                 )
                 count += 1
-            session.commit()
+                # Preserve completed snapshots so a network retry can resume safely.
+                session.commit()
     finally:
         client.close()
     return count
@@ -267,7 +278,11 @@ def _persist_ranking(session, period_days: int, as_of: datetime) -> int:
     for repository in repositories:
         snapshots = session.scalars(
             select(RepoSnapshot)
-            .where(RepoSnapshot.repository_id == repository.id, RepoSnapshot.captured_at <= as_of)
+            .where(
+                RepoSnapshot.repository_id == repository.id,
+                RepoSnapshot.captured_at <= as_of,
+                RepoSnapshot.source == "github_api",
+            )
             .order_by(RepoSnapshot.captured_at)
         ).all()
         series.append(
