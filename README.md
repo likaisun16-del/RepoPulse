@@ -59,6 +59,30 @@ backend\.venv\Scripts\celery.exe -A worker.app.celery_app.celery_app beat --logl
 Celery Beat 每天 `00:15 UTC`（北京时间 `08:15`）发现一次候选仓库；每天
 `02:00 UTC`（北京时间 `10:00`）保存快照并生成 1、7、14、30 天榜单。
 
+### Docker 开发模式
+
+API、Worker 和 Beat 共用同一个后端镜像。`docker-compose.override.yml` 会在本地开发时
+自动挂载 `backend` 与 `worker` 源码，API 代码修改后自动重载；Worker 代码修改后只需重启
+进程，无需重新构建镜像：
+
+```powershell
+# 首次启动，或 pyproject.toml / Dockerfile 发生变化
+docker compose up -d --build
+
+# 普通 Worker 代码修改
+docker compose restart worker beat
+
+# 新增数据库迁移
+docker compose exec -w /app/backend api alembic upgrade head
+docker compose restart worker beat
+```
+
+部署时不加载开发覆盖配置：
+
+```powershell
+docker compose -f docker-compose.yml up -d --build
+```
+
 ## 排名口径
 
 ```text
