@@ -47,7 +47,7 @@ def discover_candidates(self: GitHubTask) -> dict[str, int | str]:
             return {"status": "duplicate", "count": 0}
         try:
             names = _discover_repository_names()
-            hydrated = _hydrate_names(names)
+            hydrated = _hydrate_names(names, job_key=job_key)
             _record_discovery_run(now, len(names), "completed")
             _finish_job(job_key, "completed")
             return {"status": "ok", "count": hydrated}
@@ -55,6 +55,12 @@ def discover_candidates(self: GitHubTask) -> dict[str, int | str]:
             _record_discovery_run(now, 0, "failed", str(exc))
             _finish_job(job_key, "failed", str(exc))
             raise
+
+
+@celery_app.task(name="worker.app.tasks.collect_daily_update")
+def collect_daily_update(as_of: str | None = None) -> dict[str, int | str]:
+    """Run the existing-repository snapshot independently of discovery."""
+    return capture_daily_snapshots.run(as_of)
 
 
 @celery_app.task(base=GitHubTask, bind=True, name="worker.app.tasks.hydrate_repositories")
@@ -162,24 +168,44 @@ def _discover_repository_names() -> list[str]:
         client.close()
 
 
-def _hydrate_names(names: list[str]) -> int:
+def _hydrate_names(names: list[str], job_key: str | None = None) -> int:
     client = GitHubClient()
     hydrated = 0
     try:
         with get_sync_session() as session:
+            progress = _job_progress(session, job_key) if job_key else {}
+            completed = set(progress.get("completed", []))
             for name in names:
+                if name in completed:
+                    continue
                 try:
                     data = client.repository(name)
                     if data.is_fork or data.archived or data.disabled:
                         continue
                     _upsert_repository(session, data)
                     hydrated += 1
+                    completed.add(name)
+                    if job_key:
+                        progress["completed"] = sorted(completed)
+                        _save_progress(session, job_key, progress)
+                    session.commit()
                 except GitHubClientError:
                     logger.warning("Repository hydration failed", extra={"repository": name})
             session.commit()
     finally:
         client.close()
     return hydrated
+
+
+def _job_progress(session, job_key: str) -> dict[str, Any]:
+    job = session.scalar(select(JobRun).where(JobRun.job_key == job_key))
+    return dict(job.progress or {}) if job else {}
+
+
+def _save_progress(session, job_key: str, progress: dict[str, Any]) -> None:
+    job = session.scalar(select(JobRun).where(JobRun.job_key == job_key))
+    if job:
+        job.progress = progress
 
 
 def _upsert_repository(session, data) -> None:
