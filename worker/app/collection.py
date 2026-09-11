@@ -6,6 +6,7 @@ from threading import Event, Lock, local
 from time import monotonic, time
 
 import httpx
+
 from app.clients.github import (
     GitHubClient,
     GitHubRateLimitError,

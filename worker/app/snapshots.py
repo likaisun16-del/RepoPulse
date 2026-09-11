@@ -7,6 +7,9 @@ from time import monotonic
 from typing import Any
 
 import httpx
+from sqlalchemy import select
+from sqlalchemy.orm import Session
+
 from app.clients.github import (
     GitHubClient,
     GitHubClientError,
@@ -15,9 +18,6 @@ from app.clients.github import (
 )
 from app.config import get_settings
 from app.models import JobRun, Repository, RepoSnapshot
-from sqlalchemy import select
-from sqlalchemy.orm import Session
-
 from worker.app.collection import RepositoryRequests
 
 

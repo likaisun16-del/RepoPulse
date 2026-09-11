@@ -5,6 +5,12 @@ from datetime import UTC, datetime, timedelta
 from typing import Any, cast
 
 import httpx
+from celery import Task, chain
+from redis import Redis
+from redis.exceptions import LockError, RedisError
+from sqlalchemy import delete, select
+from sqlalchemy.engine import CursorResult
+
 from app.clients.github import GitHubClient, GitHubClientError, GitHubRateLimitError
 from app.config import get_settings
 from app.database import get_sync_session
@@ -17,12 +23,6 @@ from app.models import (
     RepoSnapshot,
 )
 from app.ranking.calculator import RepositorySeries, SnapshotPoint, calculate_ranking
-from celery import Task, chain
-from redis import Redis
-from redis.exceptions import LockError, RedisError
-from sqlalchemy import delete, select
-from sqlalchemy.engine import CursorResult
-
 from worker.app.celery_app import celery_app
 from worker.app.snapshots import (
     SnapshotCancelled,
