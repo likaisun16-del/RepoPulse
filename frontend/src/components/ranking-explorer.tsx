@@ -246,7 +246,7 @@ function RankingTable({
     <>
       <div className="desktop-table-wrap">
         <table className="ranking-table">
-          <thead><tr><th>排名</th><th>项目</th><th>语言</th><th>当前 Star</th><th>{period} 天增长</th><th>增长率</th><th>更新</th><th><span className="sr-only">操作</span></th></tr></thead>
+          <thead><tr><th>排名</th><th>项目</th><th>语言</th><th>当前 Star</th><th>{period} 天增长</th><th>增长率</th><th>GitHub 最近提交</th><th><span className="sr-only">操作</span></th></tr></thead>
           <tbody>
             {items.map((item) => (
               <tr key={item.full_name}>

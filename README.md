@@ -59,6 +59,49 @@ backend\.venv\Scripts\celery.exe -A worker.app.celery_app.celery_app beat --logl
 Celery Beat 每天 `00:15 UTC`（北京时间 `08:15`）发现一次候选仓库；每天
 `02:00 UTC`（北京时间 `10:00`）保存快照并生成 1、7、14、30 天榜单。
 
+### 抓取性能与任务恢复
+
+发现阶段只为尚未跟踪的仓库获取详情；已有仓库在每日快照阶段重新请求 GitHub，
+不会复用发现阶段的 Star 数据。两个阶段独立调度。
+
+快照默认四并发、每秒最多启动四次请求。网络线程各自复用客户端，数据库由主线程写入；
+每 50 条或 5 秒提交一次（先到者为准）。可通过以下环境变量调整，修改后重建 Worker 容器配置：
+
+| 环境变量 | 默认值 | 用途 |
+|---|---:|---|
+| `SNAPSHOT_CONCURRENCY` | 4 | 网络并发数，设为 1 回退串行 |
+| `SNAPSHOT_REQUESTS_PER_SECOND` | 4 | 单个快照任务启动请求的速率上限 |
+| `SNAPSHOT_BATCH_SIZE` | 50 | 每次提交的最大快照数 |
+| `SNAPSHOT_FLUSH_SECONDS` | 5 | 有在途请求时的提交及进度更新间隔 |
+
+`job_runs.progress` 保存 `total`、`saved`、`failed`、`failures`、`rate_per_second`、
+`eta_seconds`、`updated_at`。发生限流后，任务进入 `waiting`，同时保存 `wait_reason`
+和 `resume_at`，按 GitHub 响应头延迟续跑；二级限流后，本轮剩余请求降为串行。
+网络临时故障重试三次，间隔 1、2、4 秒。永久错误或重试耗尽会保留失败仓库清单，
+任务标记为 `failed`，不触发榜单。人工重投同日期任务时，仅抓取尚未保存的快照。
+
+将对应任务的 `cancel_requested` 设为 `true` 可以取消：调度器停止新请求，
+等待已发出的请求返回并保存成功结果，最终标记为 `cancelled`。已取消任务和延迟重试
+不会自动恢复；取消响应受当前网络请求超时约束。正常快照任务软超时为两小时，
+硬超时为两小时一分钟；强制终止可能丢失最后一批未提交的数据。
+
+快照启动必须取得 Redis 锁；Redis 不可用时不降级为无锁并发写入。
+同一天已保存的快照保持唯一，重试固定原快照日期，跨日限流等待不会切换日期。
+GitHub 配额可能与其他应用或同账号 Token 共享，不能把更多 Token 视为独立额度。
+
+真实 API 性能验证使用临时 SQLite 数据库，生产数据库只读，不会恢复已取消任务或发布榜单：
+
+```powershell
+docker compose exec -T worker python -m worker.app.benchmark --limit 200 --timeout 300
+docker compose exec -T worker python -m worker.app.benchmark --limit 0 --timeout 2100
+```
+
+配额不足时验证返回 `deferred`；验证失败、取消、限流会返回非零退出码。
+完整验证的默认超时是 35 分钟，任务结束后输出已保存数量、快照耗时和四个榜单耗时。
+临时库验证主要衡量网络吞吐，不替代生产 PostgreSQL 写入性能验证。
+按约 3,500 个仓库、每次请求约一秒估算，快照目标为 16–22 分钟，
+发现加快照的累计处理时间为 18–27 分钟；不包含两个定时任务之间的空闲时间或限流等待。
+
 ### Docker 开发模式
 
 API、Worker 和 Beat 共用同一个后端镜像。`docker-compose.override.yml` 会在本地开发时

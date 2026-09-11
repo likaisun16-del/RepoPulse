@@ -6,8 +6,10 @@ import pytest
 from sqlalchemy import create_engine, select
 from sqlalchemy.orm import sessionmaker
 from worker.app import tasks
+from worker.app.snapshots import SnapshotIncomplete
 
 from app.clients.github import GitHubRateLimitError
+from app.config import Settings
 from app.models import Base, RankingItem, Repository, RepoSnapshot
 
 
@@ -40,12 +42,18 @@ def sessions(tmp_path, monkeypatch):
 def test_capture_preserves_progress_and_resumes(sessions, monkeypatch, failure):
     client = Mock()
     data = Mock(stars_count=175, forks_count=10)
-    client.repository.side_effect = [data, failure]
+    def fetch(name):
+        if name == "owner/repo2":
+            raise failure
+        return data
+    client.repository.side_effect = fetch
+    monkeypatch.setattr("worker.app.snapshots.get_settings", lambda: Settings(snapshot_concurrency=1))
     monkeypatch.setattr(tasks, "GitHubClient", lambda: client)
-    monkeypatch.setattr(tasks, "_upsert_repository", lambda session, data: None)
+    monkeypatch.setattr(tasks, "_upsert_repository", lambda session, data, **kwargs: None)
     now = datetime(2026, 9, 8, 2, tzinfo=UTC).replace(tzinfo=None)
 
-    with pytest.raises(type(failure)):
+    expected = GitHubRateLimitError if isinstance(failure, GitHubRateLimitError) else SnapshotIncomplete
+    with pytest.raises(expected):
         tasks._capture_snapshots(now)
     with sessions() as session:
         assert len(session.scalars(select(RepoSnapshot)).all()) == 1

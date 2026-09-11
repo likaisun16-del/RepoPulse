@@ -1,5 +1,7 @@
 import base64
 from dataclasses import dataclass
+from datetime import UTC, datetime
+from email.utils import parsedate_to_datetime
 from itertools import cycle
 from threading import Lock
 from typing import Any
@@ -15,8 +17,34 @@ class GitHubClientError(RuntimeError):
     pass
 
 
-class GitHubRateLimitError(GitHubClientError):
+class GitHubTransientError(GitHubClientError):
     pass
+
+
+class GitHubRateLimitError(GitHubClientError):
+    def __init__(self, message: str, retry_after: float = 60, secondary: bool = False):
+        super().__init__(message)
+        self.retry_after = max(1, retry_after)
+        self.secondary = secondary
+
+
+def _retry_after(response: httpx.Response) -> float:
+    now = datetime.now(UTC).timestamp()
+    value = response.headers.get("retry-after")
+    if value:
+        try:
+            return max(1, float(value))
+        except ValueError:
+            try:
+                return max(1, parsedate_to_datetime(value).timestamp() - now)
+            except (ValueError, TypeError):
+                pass
+    if response.headers.get("x-ratelimit-remaining") == "0":
+        try:
+            return max(1, float(response.headers["x-ratelimit-reset"]) - now + 1)
+        except (KeyError, ValueError):
+            pass
+    return 60
 
 
 @dataclass(frozen=True)
@@ -52,6 +80,8 @@ class GitHubClient:
         self._tokens = cycle(settings.github_tokens or [""])
         self._token_lock = Lock()
         self._etag_cache: dict[str, tuple[str, Any]] = {}
+        self.rate_limit_remaining: int | None = None
+        self.rate_limit_reset: float | None = None
         self._client = httpx.Client(
             base_url="https://api.github.com",
             timeout=20,
@@ -195,6 +225,12 @@ class GitHubClient:
         if cached:
             headers["If-None-Match"] = cached[0]
         response = self._client.get(path, params=params, headers=headers)
+        try:
+            self.rate_limit_remaining = int(response.headers["x-ratelimit-remaining"])
+            self.rate_limit_reset = float(response.headers["x-ratelimit-reset"])
+        except (KeyError, ValueError):
+            self.rate_limit_remaining = None
+            self.rate_limit_reset = None
         if response.status_code == 304 and cached:
             return cached[1]
         self._raise_for_status(response)
@@ -212,8 +248,20 @@ class GitHubClient:
 
     @staticmethod
     def _raise_for_status(response: httpx.Response) -> None:
-        if response.status_code in {403, 429}:
-            raise GitHubRateLimitError("GitHub API rate limit reached")
+        exhausted = response.headers.get("x-ratelimit-remaining") == "0"
+        limited = response.status_code == 429 or (
+            response.status_code == 403 and (
+                exhausted or "retry-after" in response.headers
+                or "rate limit" in response.text.lower()
+                or "abuse" in response.text.lower()
+            )
+        )
+        if limited:
+            raise GitHubRateLimitError(
+                "GitHub API rate limit reached", _retry_after(response), secondary=not exhausted
+            )
+        if response.status_code >= 500:
+            raise GitHubTransientError(f"GitHub request failed: {response.status_code}")
         try:
             response.raise_for_status()
         except httpx.HTTPStatusError as exc:

@@ -24,6 +24,11 @@ from sqlalchemy import delete, select
 from sqlalchemy.engine import CursorResult
 
 from worker.app.celery_app import celery_app
+from worker.app.snapshots import (
+    SnapshotCancelled,
+    SnapshotCollector,
+    SnapshotIncomplete,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -38,8 +43,8 @@ class GitHubTask(Task):
 
 
 @celery_app.task(base=GitHubTask, bind=True, name="worker.app.tasks.discover_candidates")
-def discover_candidates(self: GitHubTask) -> dict[str, int | str]:
-    now = datetime.now(UTC)
+def discover_candidates(self: GitHubTask, as_of: str | None = None) -> dict[str, int | str]:
+    now = datetime.fromisoformat(as_of) if as_of else datetime.now(UTC)
     bucket = now.replace(hour=now.hour - (now.hour % 6), minute=0, second=0, microsecond=0)
     job_key = f"discovery:{bucket.isoformat()}"
     with _task_lock(job_key, timeout=21_600) as acquired:
@@ -47,20 +52,26 @@ def discover_candidates(self: GitHubTask) -> dict[str, int | str]:
             return {"status": "duplicate", "count": 0}
         try:
             names = _discover_repository_names()
-            hydrated = _hydrate_names(names, job_key=job_key)
+            hydrated = _hydrate_names(names, job_key=job_key, only_new=True)
             _record_discovery_run(now, len(names), "completed")
             _finish_job(job_key, "completed")
             return {"status": "ok", "count": hydrated}
+        except GitHubRateLimitError as exc:
+            if self.request.retries >= self.max_retries:
+                _finish_job(job_key, "failed", "Rate limit retries exhausted")
+                raise
+            _wait_for_quota(job_key, exc)
+            raise self.retry(exc=exc, args=(now.isoformat(),), kwargs={}, countdown=exc.retry_after)
         except Exception as exc:
             _record_discovery_run(now, 0, "failed", str(exc))
             _finish_job(job_key, "failed", str(exc))
             raise
 
 
-@celery_app.task(name="worker.app.tasks.collect_daily_update")
-def collect_daily_update(as_of: str | None = None) -> dict[str, int | str]:
+@celery_app.task(bind=True, name="worker.app.tasks.collect_daily_update")
+def collect_daily_update(self: Task, as_of: str | None = None) -> dict[str, int | str]:
     """Run the existing-repository snapshot independently of discovery."""
-    return capture_daily_snapshots.run(as_of)
+    return self.replace(capture_daily_snapshots.s(as_of))
 
 
 @celery_app.task(base=GitHubTask, bind=True, name="worker.app.tasks.hydrate_repositories")
@@ -68,15 +79,20 @@ def hydrate_repositories(self: GitHubTask, repo_names: list[str]) -> dict[str, i
     return {"count": _hydrate_names(repo_names)}
 
 
-@celery_app.task(base=GitHubTask, bind=True, name="worker.app.tasks.capture_daily_snapshots")
-def capture_daily_snapshots(self: GitHubTask, as_of: str | None = None) -> dict[str, int | str]:
+@celery_app.task(
+    bind=True, max_retries=5, soft_time_limit=7_200, time_limit=7_260,
+    name="worker.app.tasks.capture_daily_snapshots",
+)
+def capture_daily_snapshots(self: Task, as_of: str | None = None) -> dict[str, int | str]:
     captured_at = _parse_as_of(as_of)
     job_key = f"snapshot:all:{captured_at.date().isoformat()}"
-    with _task_lock(job_key, timeout=7_200) as acquired:
+    with _task_lock(job_key, timeout=7_800, required=True) as acquired:
         if not acquired or not _start_job(job_key, "capture_daily_snapshots"):
             return {"status": "duplicate", "count": 0}
         try:
             count = _capture_snapshots(captured_at)
+            if _job_cancelled(job_key):
+                raise SnapshotCancelled("Cancelled at user request")
             workflow = chain(
                 build_ranking.si(1, captured_at.isoformat()),
                 build_ranking.si(7, captured_at.isoformat()),
@@ -86,6 +102,20 @@ def capture_daily_snapshots(self: GitHubTask, as_of: str | None = None) -> dict[
             workflow.delay()
             _finish_job(job_key, "completed")
             return {"status": "ok", "count": count}
+        except SnapshotCancelled as exc:
+            _finish_job(job_key, "cancelled", str(exc))
+            return {"status": "cancelled", "count": 0}
+        except GitHubRateLimitError as exc:
+            if self.request.retries >= self.max_retries:
+                _finish_job(job_key, "failed", "Rate limit retries exhausted")
+                raise
+            _wait_for_quota(job_key, exc)
+            raise self.retry(
+                exc=exc, args=(captured_at.isoformat(),), kwargs={}, countdown=exc.retry_after,
+            )
+        except SnapshotIncomplete as exc:
+            _finish_job(job_key, "failed", str(exc))
+            raise
         except Exception as exc:
             _finish_job(job_key, "failed", str(exc))
             raise
@@ -168,27 +198,40 @@ def _discover_repository_names() -> list[str]:
         client.close()
 
 
-def _hydrate_names(names: list[str], job_key: str | None = None) -> int:
+def _hydrate_names(
+    names: list[str], job_key: str | None = None, only_new: bool = False,
+) -> int:
     client = GitHubClient()
     hydrated = 0
     try:
         with get_sync_session() as session:
             progress = _job_progress(session, job_key) if job_key else {}
             completed = set(progress.get("completed", []))
-            for name in names:
-                if name in completed:
+            identities = session.execute(select(Repository.full_name, Repository.github_id)).all()
+            known = {name.lower() for name, _ in identities} if only_new else set()
+            known_ids = {github_id for _, github_id in identities} if only_new else set()
+            exclusions = get_settings().repository_exclusions
+            for name in sorted(set(names)):
+                if name.lower() in known or name.lower() in exclusions or name in completed:
                     continue
                 try:
                     data = client.repository(name)
+                    if data.github_id in known_ids:
+                        continue
                     if data.is_fork or data.archived or data.disabled:
                         continue
                     _upsert_repository(session, data)
                     hydrated += 1
+                    if only_new:
+                        known.add(data.full_name.lower())
+                        known_ids.add(data.github_id)
                     completed.add(name)
                     if job_key:
                         progress["completed"] = sorted(completed)
                         _save_progress(session, job_key, progress)
                     session.commit()
+                except GitHubRateLimitError:
+                    raise
                 except GitHubClientError:
                     logger.warning("Repository hydration failed", extra={"repository": name})
             session.commit()
@@ -208,9 +251,10 @@ def _save_progress(session, job_key: str, progress: dict[str, Any]) -> None:
         job.progress = progress
 
 
-def _upsert_repository(session, data) -> None:
+def _upsert_repository(session, data, repository: Repository | None = None) -> None:
     now = datetime.now(UTC)
-    repository = session.scalar(select(Repository).where(Repository.github_id == data.github_id))
+    if repository is None:
+        repository = session.scalar(select(Repository).where(Repository.github_id == data.github_id))
     if repository is None:
         repository = session.scalar(select(Repository).where(Repository.full_name == data.full_name))
     if repository is None:
@@ -244,52 +288,27 @@ def _upsert_repository(session, data) -> None:
 
 
 def _capture_snapshots(captured_at: datetime) -> int:
-    client = GitHubClient()
-    count = 0
-    try:
-        with get_sync_session() as session:
-            repositories = session.scalars(
-                select(Repository).where(
-                    Repository.is_fork.is_(False),
-                    Repository.archived.is_(False),
-                    Repository.disabled.is_(False),
-                )
-            ).all()
-            for repository in repositories:
-                exists = session.scalar(
-                    select(RepoSnapshot.id).where(
-                        RepoSnapshot.repository_id == repository.id,
-                        RepoSnapshot.snapshot_date == captured_at.date(),
-                    )
-                )
-                if exists:
-                    continue
-                try:
-                    data = client.repository(repository.full_name)
-                except GitHubRateLimitError:
-                    raise
-                except GitHubClientError:
-                    logger.warning(
-                        "Snapshot capture failed", extra={"repository": repository.full_name}
-                    )
-                    continue
-                _upsert_repository(session, data)
-                session.add(
-                    RepoSnapshot(
-                        repository_id=repository.id,
-                        snapshot_date=captured_at.date(),
-                        captured_at=captured_at,
-                        stars_count=data.stars_count,
-                        forks_count=data.forks_count,
-                        source="github_api",
-                    )
-                )
-                count += 1
-                # Preserve completed snapshots so a network retry can resume safely.
-                session.commit()
-    finally:
-        client.close()
-    return count
+    return SnapshotCollector(
+        captured_at, get_sync_session, GitHubClient, _upsert_repository,
+    ).run()
+
+
+def _job_cancelled(job_key: str) -> bool:
+    with get_sync_session() as session:
+        return bool(session.scalar(select(JobRun.cancel_requested).where(JobRun.job_key == job_key)))
+
+
+def _wait_for_quota(job_key: str, error: GitHubRateLimitError) -> None:
+    with get_sync_session() as session:
+        job = session.scalar(select(JobRun).where(JobRun.job_key == job_key))
+        if job:
+            job.status = "waiting"
+            job.error_message = str(error)
+            job.progress = dict(job.progress or {},
+                wait_reason="secondary_rate_limit" if error.secondary else "quota_exhausted",
+                resume_at=(datetime.now(UTC) + timedelta(seconds=error.retry_after)).isoformat(),
+            )
+            session.commit()
 
 
 def _persist_ranking(session, period_days: int, as_of: datetime) -> int:
@@ -369,7 +388,7 @@ def _persist_ranking(session, period_days: int, as_of: datetime) -> int:
 
 
 @contextmanager
-def _task_lock(key: str, timeout: int) -> Iterator[bool]:
+def _task_lock(key: str, timeout: int, required: bool = False) -> Iterator[bool]:
     client = Redis.from_url(
         get_settings().redis_url,
         socket_connect_timeout=0.5,
@@ -383,6 +402,8 @@ def _task_lock(key: str, timeout: int) -> Iterator[bool]:
             acquired = bool(lock.acquire(blocking=False))
             owns_lock = acquired
         except RedisError:
+            if required:
+                raise
             logger.warning("Redis lock unavailable; relying on database idempotency")
             acquired = True
         yield acquired
@@ -398,11 +419,17 @@ def _task_lock(key: str, timeout: int) -> Iterator[bool]:
 def _start_job(job_key: str, task_name: str) -> bool:
     with get_sync_session() as session:
         job = session.scalar(select(JobRun).where(JobRun.job_key == job_key))
-        if job and job.status == "completed":
+        if job and (job.status in {"completed", "cancelled"} or job.cancel_requested):
+            if job.cancel_requested and job.status != "completed":
+                job.status = "cancelled"
+                job.finished_at = datetime.now(UTC)
+                session.commit()
             return False
         if job is None:
             job = JobRun(job_key=job_key, task_name=task_name, attempts=0)
             session.add(job)
+        job.progress = {k: v for k, v in (job.progress or {}).items()
+                        if k not in {"wait_reason", "resume_at"}}
         job.status = "running"
         job.attempts += 1
         job.error_message = None

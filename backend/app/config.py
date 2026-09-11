@@ -1,5 +1,6 @@
 from functools import lru_cache
 
+from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -19,6 +20,10 @@ class Settings(BaseSettings):
     excluded_repositories: str = ""
     max_active_repositories: int = 5000
     github_search_pages: int = 2
+    snapshot_concurrency: int = Field(default=4, ge=1, le=16)
+    snapshot_requests_per_second: float = Field(default=4, gt=0, le=10)
+    snapshot_batch_size: int = Field(default=50, ge=1, le=500)
+    snapshot_flush_seconds: float = Field(default=5, gt=0, le=30)
     sentry_dsn: str | None = None
     sentry_traces_sample_rate: float = 0.05
     seed_demo_data: bool = False

@@ -144,7 +144,9 @@ def test_readme_raises_for_missing_content() -> None:
 @pytest.mark.parametrize("status_code", [403, 429])
 def test_converts_rate_limit_responses(status_code: int) -> None:
     client = GitHubClient(
-        httpx.MockTransport(lambda _: httpx.Response(status_code, json={"message": "limited"}))
+        httpx.MockTransport(lambda _: httpx.Response(
+            status_code, json={"message": "API rate limit exceeded"},
+        ))
     )
     try:
         with pytest.raises(GitHubRateLimitError, match="rate limit"):
