@@ -1,7 +1,8 @@
 import sentry_sdk
-from app.config import get_settings
 from celery import Celery
 from celery.schedules import crontab
+
+from app.config import get_settings
 
 settings = get_settings()
 

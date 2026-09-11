@@ -1,10 +1,10 @@
 import httpx
-from app.avatar_cache import download_avatar
-from app.database import get_sync_session
-from app.models import Repository
 from celery import Task
 from sqlalchemy import select
 
+from app.avatar_cache import download_avatar
+from app.database import get_sync_session
+from app.models import Repository
 from worker.app.celery_app import celery_app
 
 
@@ -37,5 +37,6 @@ def warmup_avatars() -> dict[str, int]:
             .limit(100)
         ).all()
     for owner_id in dict.fromkeys(owners):
-        refresh_avatar.delay(int(owner_id))
+        if owner_id is not None:
+            refresh_avatar.delay(owner_id)
     return {"count": len(owners)}

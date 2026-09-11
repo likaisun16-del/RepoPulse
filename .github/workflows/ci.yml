@@ -37,6 +37,8 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+      - name: Prepare test database
+        run: mkdir -p .ci && rm -f .ci/frontend.sqlite3
       - run: npm ci
       - run: pip install -e ../backend
       - run: npm run lint
@@ -44,10 +46,17 @@ jobs:
       - run: npm run build
       - run: npx playwright install --with-deps chromium
       - name: Start API
+        env:
+          ENVIRONMENT: development
+          SEED_DEMO_DATA: "true"
+          DATABASE_URL: sqlite+aiosqlite:///./.ci/frontend.sqlite3
+          SYNC_DATABASE_URL: sqlite:///./.ci/frontend.sqlite3
+          REDIS_URL: redis://localhost:6379/0
         run: |
           nohup python -m uvicorn app.main:app --app-dir ../backend --host 127.0.0.1 --port 8000 > /tmp/repopulse-api.log 2>&1 &
           for attempt in {1..20}; do
             curl --fail --silent http://127.0.0.1:8000/api/v1/health && break
             sleep 1
           done
+          test -s /tmp/repopulse-api.log && cat /tmp/repopulse-api.log || true
       - run: npm test -- --project=chromium
