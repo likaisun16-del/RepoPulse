@@ -273,6 +273,8 @@ def _upsert_repository(session, data, repository: Repository | None = None) -> N
     else:
         repository.github_id = data.github_id
     repository.description = data.description
+    repository.owner_github_id = data.owner_github_id
+    repository.owner_avatar_url = data.owner_avatar_url
     repository.language = data.language
     repository.topics = data.topics
     repository.license_name = data.license_name

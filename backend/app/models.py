@@ -29,6 +29,8 @@ class Repository(Base):
     github_id: Mapped[int] = mapped_column(BigInteger, unique=True, index=True)
     full_name: Mapped[str] = mapped_column(String(255), unique=True, index=True)
     owner: Mapped[str] = mapped_column(String(120), index=True)
+    owner_github_id: Mapped[int | None] = mapped_column(BigInteger, index=True)
+    owner_avatar_url: Mapped[str | None] = mapped_column(String(500))
     name: Mapped[str] = mapped_column(String(180))
     description: Mapped[str | None] = mapped_column(Text)
     html_url: Mapped[str] = mapped_column(String(500))

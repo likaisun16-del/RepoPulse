@@ -64,6 +64,8 @@ class GitHubRepositoryData:
     disabled: bool
     pushed_at: str | None
     created_at: str | None
+    owner_github_id: int | None = None
+    owner_avatar_url: str | None = None
 
 
 @dataclass(frozen=True)
@@ -135,8 +137,12 @@ class GitHubClient:
     def repository(self, full_name: str) -> GitHubRepositoryData:
         payload = self._get_json(f"/repos/{full_name}")
         license_data = payload.get("license") or {}
+        owner = payload.get("owner") or {}
+        owner_id = owner.get("id")
         return GitHubRepositoryData(
             github_id=int(payload["id"]),
+            owner_github_id=int(owner_id) if owner_id is not None else None,
+            owner_avatar_url=owner.get("avatar_url"),
             full_name=str(payload["full_name"]),
             description=payload.get("description"),
             html_url=str(payload["html_url"]),
@@ -250,8 +256,10 @@ class GitHubClient:
     def _raise_for_status(response: httpx.Response) -> None:
         exhausted = response.headers.get("x-ratelimit-remaining") == "0"
         limited = response.status_code == 429 or (
-            response.status_code == 403 and (
-                exhausted or "retry-after" in response.headers
+            response.status_code == 403
+            and (
+                exhausted
+                or "retry-after" in response.headers
                 or "rate limit" in response.text.lower()
                 or "abuse" in response.text.lower()
             )

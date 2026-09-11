@@ -269,7 +269,7 @@ function RankingTable({
         {items.map((item) => (
           <Link className="mobile-repo" href={repositoryHref(item, returnTo)} key={item.full_name}>
             <div className="mobile-rank"><RankCell item={item} /></div>
-            <RepositoryAvatar owner={item.owner} size={42} />
+            <RepositoryAvatar owner={item.owner} ownerGithubId={item.owner_github_id} size={42} />
             <div className="mobile-main"><strong>{item.name}</strong><span><LanguageBadge language={item.language} /> · {formatCompact(item.total_stars)} Star</span></div>
             <div className={`mobile-growth ${item.baseline_available ? "" : "no-growth"}`}>
               <strong>{item.baseline_available ? `+${formatCompact(item.star_delta)}` : "无增长"}</strong>
@@ -298,7 +298,7 @@ function RankCell({ item }: { item: RankingItem }) {
 function RepositoryCell({ item, returnTo }: { item: RankingItem; returnTo: string }) {
   return (
     <div className="repo-cell">
-      <RepositoryAvatar owner={item.owner} size={46} />
+      <RepositoryAvatar owner={item.owner} ownerGithubId={item.owner_github_id} size={46} />
       <div>
         <Link href={repositoryHref(item, returnTo)}>{item.name}</Link>
         <p>{getRepositoryDescription(item)}</p>

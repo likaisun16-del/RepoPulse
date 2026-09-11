@@ -19,6 +19,7 @@ class RankingItemResponse(BaseModel):
     previous_rank: int | None = None
     full_name: str
     owner: str
+    owner_github_id: int | None = None
     name: str
     description: str | None
     language: str | None
@@ -53,6 +54,7 @@ class RepositoryResponse(BaseModel):
 
     full_name: str
     owner: str
+    owner_github_id: int | None = None
     name: str
     description: str | None
     html_url: str

@@ -1,8 +1,7 @@
 import sentry_sdk
+from app.config import get_settings
 from celery import Celery
 from celery.schedules import crontab
-
-from app.config import get_settings
 
 settings = get_settings()
 
@@ -17,7 +16,7 @@ celery_app = Celery(
     "repopulse",
     broker=settings.redis_url,
     backend=settings.redis_url,
-    include=["worker.app.tasks"],
+    include=["worker.app.tasks", "worker.app.avatar_tasks"],
 )
 celery_app.conf.update(
     task_serializer="json",
@@ -39,6 +38,10 @@ celery_app.conf.update(
         "cleanup-jobs-weekly": {
             "task": "worker.app.tasks.cleanup_failed_jobs",
             "schedule": crontab(minute=30, hour=3, day_of_week="sun"),
+        },
+        "warmup-top-avatars-daily": {
+            "task": "worker.app.avatar_tasks.warmup_avatars",
+            "schedule": crontab(minute=30, hour=2),
         },
     },
 )

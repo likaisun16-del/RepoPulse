@@ -46,8 +46,11 @@ services:
       SNAPSHOT_REQUESTS_PER_SECOND: ${SNAPSHOT_REQUESTS_PER_SECOND:-4}
       SNAPSHOT_BATCH_SIZE: ${SNAPSHOT_BATCH_SIZE:-50}
       SNAPSHOT_FLUSH_SECONDS: ${SNAPSHOT_FLUSH_SECONDS:-5}
+      AVATAR_CACHE_DIR: /var/cache/repopulse/avatars
     ports:
       - "8000:8000"
+    volumes:
+      - repopulse-avatar-cache:/var/cache/repopulse/avatars:ro
     depends_on:
       postgres:
         condition: service_healthy
@@ -63,6 +66,8 @@ services:
         condition: service_started
       redis:
         condition: service_healthy
+    volumes:
+      - repopulse-avatar-cache:/var/cache/repopulse/avatars
 
   beat:
     <<: *backend-service
@@ -88,3 +93,4 @@ services:
 
 volumes:
   repopulse-postgres:
+  repopulse-avatar-cache:

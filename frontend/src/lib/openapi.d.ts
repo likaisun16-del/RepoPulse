@@ -156,6 +156,7 @@ export interface components {
             full_name: string;
             /** Owner */
             owner: string;
+            owner_github_id?: number | null;
             /** Name */
             name: string;
             /** Description */
@@ -218,6 +219,7 @@ export interface components {
             full_name: string;
             /** Owner */
             owner: string;
+            owner_github_id?: number | null;
             /** Name */
             name: string;
             /** Description */

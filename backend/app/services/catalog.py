@@ -184,6 +184,7 @@ class CatalogService:
             previous_rank=item.previous_rank,
             full_name=repository.full_name,
             owner=repository.owner,
+            owner_github_id=repository.owner_github_id,
             name=repository.name,
             description=repository.description,
             language=repository.language,

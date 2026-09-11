@@ -29,6 +29,12 @@ class Settings(BaseSettings):
     seed_demo_data: bool = False
     frontend_origins: str = "http://localhost:3000,http://127.0.0.1:3000"
     environment: str = "development"
+    avatar_cache_dir: str = "/tmp/repopulse-avatars"
+    avatar_cache_max_bytes: int = 524288000
+    avatar_refresh_days: int = 7
+    avatar_download_concurrency: int = 2
+    avatar_request_timeout: float = 15
+    avatar_warmup_limit: int = 100
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 

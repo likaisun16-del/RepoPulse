@@ -1,13 +1,38 @@
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query
+from fastapi.responses import FileResponse, Response
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from worker.app.avatar_tasks import refresh_avatar
 
-from app.database import get_session
+from app.avatar_cache import avatar_path, is_fresh
+from app.database import async_session_factory, get_session
+from app.models import Repository
 from app.schemas import ChartRange, ReadmeResponse, RepositoryResponse, SnapshotSeriesResponse
 from app.services.catalog import CatalogService
 
 router = APIRouter(tags=["repositories"])
+
+
+@router.get("/avatars/{owner_id}")
+async def get_avatar(owner_id: int) -> Response:
+    path = avatar_path(owner_id)
+    if path.exists():
+        if not is_fresh(path):
+            refresh_avatar.delay(owner_id)
+        return FileResponse(
+            path,
+            media_type="image/jpeg",
+            headers={"Cache-Control": "public, max-age=3600", "ETag": str(path.stat().st_mtime_ns)},
+        )
+    async with async_session_factory() as session:
+        known = await session.scalar(
+            select(Repository.owner_avatar_url).where(Repository.owner_github_id == owner_id)
+        )
+    if known:
+        refresh_avatar.delay(owner_id)
+    return Response(status_code=404, headers={"Cache-Control": "no-store"})
 
 
 @router.get("/repos/{owner}/{name}", response_model=RepositoryResponse)
