@@ -1,6 +1,6 @@
 "use client";
 
-import { Activity, Github, TrendingUp } from "lucide-react";
+import { Activity, Github, Settings, TrendingUp } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
@@ -26,6 +26,7 @@ export function SiteHeader() {
           </Link>
         </nav>
         <div className="header-actions">
+          <Link className="icon-link" href="/settings/ai" aria-label="模型设置" title="模型设置"><Settings size={19} /></Link>
           <ThemeToggle />
           <a
             className="icon-link"

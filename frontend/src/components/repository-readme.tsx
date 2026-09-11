@@ -1,7 +1,5 @@
 import { ArrowUpRight, FileText } from "lucide-react";
-import ReactMarkdown from "react-markdown";
-import rehypeSanitize from "rehype-sanitize";
-import remarkGfm from "remark-gfm";
+import { ReadmeAi } from "@/components/readme-ai";
 
 import type { ReadmeResponse } from "@/lib/types";
 
@@ -19,7 +17,7 @@ export function RepositoryReadme({ readme }: RepositoryReadmeProps) {
           </span>
           <div>
             <h2 id="readme-heading">项目文档</h2>
-            <p>仓库 README 原文</p>
+            <p>仓库 README</p>
           </div>
         </div>
         {readme ? (
@@ -37,21 +35,7 @@ export function RepositoryReadme({ readme }: RepositoryReadmeProps) {
         ) : null}
       </div>
       {readme ? (
-        <article className="readme-content">
-          <ReactMarkdown
-            remarkPlugins={[remarkGfm]}
-            rehypePlugins={[rehypeSanitize]}
-            components={{
-              a: ({ children, href }) => (
-                <a href={href} target="_blank" rel="noreferrer">
-                  {children}
-                </a>
-              ),
-            }}
-          >
-            {readme.content}
-          </ReactMarkdown>
-        </article>
+        <ReadmeAi key={readme.repository + readme.content} markdown={readme.content} />
       ) : (
         <div className="readme-empty">
           <FileText size={22} />
