@@ -219,6 +219,7 @@ export function RankingExplorer({
 
             {data && data.meta.total > data.meta.limit ? (
               <Pagination
+                key={data.meta.page}
                 page={data.meta.page}
                 limit={data.meta.limit}
                 total={data.meta.total}
@@ -323,7 +324,48 @@ function EmptyState() {
 
 function Pagination({ page, limit, total, onChange }: { page: number; limit: number; total: number; onChange: (page: number) => void }) {
   const pages = Math.ceil(total / limit);
-  return <div className="pagination"><button type="button" disabled={page <= 1} onClick={() => onChange(page - 1)} aria-label="上一页"><ChevronLeft size={17} /></button><span>第 {page} / {pages} 页</span><button type="button" disabled={page >= pages} onClick={() => onChange(page + 1)} aria-label="下一页"><ChevronRight size={17} /></button></div>;
+  const [jumpPage, setJumpPage] = useState(String(page));
+  const [jumpError, setJumpError] = useState("");
+
+  function handleJump(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const value = jumpPage.trim();
+    const targetPage = Number(value);
+    if (!/^\d+$/.test(value) || !Number.isInteger(targetPage) || targetPage < 1 || targetPage > pages) {
+      setJumpError(`请输入 1 到 ${pages} 之间的页码`);
+      return;
+    }
+    setJumpError("");
+    if (targetPage !== page) onChange(targetPage);
+  }
+
+  return (
+    <div className="pagination">
+      <button type="button" disabled={page <= 1} onClick={() => onChange(page - 1)} aria-label="上一页"><ChevronLeft size={17} /></button>
+      <span>第 {page} / {pages} 页</span>
+      <button type="button" disabled={page >= pages} onClick={() => onChange(page + 1)} aria-label="下一页"><ChevronRight size={17} /></button>
+      <form className="pagination-jump" onSubmit={handleJump} noValidate aria-label="跳转页码">
+        <label htmlFor="pagination-page-input">跳转到</label>
+        <input
+          id="pagination-page-input"
+          type="number"
+          inputMode="numeric"
+          min={1}
+          max={pages}
+          step={1}
+          value={jumpPage}
+          onChange={(event) => {
+            setJumpPage(event.target.value);
+            if (jumpError) setJumpError("");
+          }}
+          aria-label="页码"
+          aria-describedby={jumpError ? "pagination-jump-error" : undefined}
+        />
+        <button type="submit">跳转</button>
+        {jumpError ? <span id="pagination-jump-error" className="pagination-error" role="alert">{jumpError}</span> : null}
+      </form>
+    </div>
+  );
 }
 
 function repositoryHref(item: RankingItem, returnTo: string) {

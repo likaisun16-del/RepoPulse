@@ -831,6 +831,7 @@ html[data-theme="dark"] .theme-toggle-glow {
 
 .pagination {
   display: flex;
+  flex-wrap: wrap;
   min-height: 62px;
   align-items: center;
   justify-content: center;
@@ -856,6 +857,57 @@ html[data-theme="dark"] .theme-toggle-glow {
   color: var(--faint);
   background: var(--canvas);
   cursor: not-allowed;
+}
+
+.pagination-jump {
+  display: inline-flex;
+  position: relative;
+  align-items: center;
+  gap: 8px;
+  color: var(--muted);
+}
+
+.pagination-jump label {
+  white-space: nowrap;
+}
+
+.pagination-jump input {
+  width: 58px;
+  height: 32px;
+  padding: 0 8px;
+  color: var(--ink);
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  outline: 0;
+  background: var(--surface);
+  font: inherit;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+.pagination-jump input:focus-visible {
+  border-color: var(--blue);
+  box-shadow: 0 0 0 3px var(--blue-soft);
+}
+
+.pagination-jump input::-webkit-inner-spin-button,
+.pagination-jump input::-webkit-outer-spin-button {
+  margin: 0;
+  appearance: none;
+}
+
+.pagination-jump button {
+  width: auto;
+  min-width: 56px;
+  padding-inline: 12px;
+  font-size: 12px;
+}
+
+.pagination-error {
+  flex-basis: 100%;
+  margin: -4px 0 2px;
+  color: var(--danger);
+  text-align: center;
 }
 
 .loading-line {
@@ -1905,6 +1957,16 @@ html[data-theme="dark"] .rank-3 > strong { color: #e89a6a; }
   .panel-heading {
     min-height: 70px;
     padding: 13px 14px;
+  }
+
+  .pagination {
+    gap: 10px;
+    padding-inline: 12px;
+  }
+
+  .pagination-jump {
+    flex-basis: 100%;
+    justify-content: center;
   }
 
   .desktop-table-wrap {

@@ -7,7 +7,10 @@ const ONE_PIXEL_PNG = Buffer.from(
 
 function rankingResponse(
   repositories: Array<{ owner: string; name: string; ownerGithubId: number | null }>,
+  options: { page?: number; limit?: number; total?: number } = {},
 ) {
+  const page = options.page ?? 1;
+  const limit = options.limit ?? 15;
   return {
     data: repositories.map((repository, index) => ({
       rank: index + 1,
@@ -32,9 +35,9 @@ function rankingResponse(
       baseline_at: "2026-08-29T00:00:00Z",
       generated_at: "2026-09-12T00:00:00Z",
       coverage: repositories.length,
-      total: repositories.length,
-      page: 1,
-      limit: 15,
+      total: options.total ?? repositories.length,
+      page,
+      limit,
       data_mode: "live",
     },
   };
@@ -60,6 +63,7 @@ async function loadMockRanking(
 
 async function enterRanking(page: Page) {
   const startButton = page.getByRole("button", { name: "现在开始" });
+  await startButton.waitFor({ state: "visible", timeout: 2_000 }).catch(() => undefined);
   if (await startButton.isVisible()) await startButton.click();
 }
 
@@ -150,6 +154,48 @@ test("榜单支持周期切换、筛选和详情跳转", async ({ page }, testIn
   await expect(page).toHaveURL(/\/repo\//);
   await expect(page.getByText("Star 趋势")).toBeVisible();
   await expect(page.locator(".recharts-responsive-container svg")).toBeVisible();
+});
+
+test("分页支持指定页跳转并拦截非法页码", async ({ page }) => {
+  const requests: string[] = [];
+  await page.route("**/api/v1/rankings?**", async (route) => {
+    const url = new URL(route.request().url());
+    const requestedPage = Number(url.searchParams.get("page") ?? "1");
+    requests.push(url.search);
+    const repositories = Array.from({ length: 15 }, (_, index) => ({
+      owner: "jump-owner",
+      name: `page-${requestedPage}-repo-${index + 1}`,
+      ownerGithubId: null,
+    }));
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      headers: { "Access-Control-Allow-Origin": "*" },
+      body: JSON.stringify(rankingResponse(repositories, { page: requestedPage, total: 45 })),
+    });
+  });
+
+  await page.goto("/?period=7");
+  await enterRanking(page);
+  await page.getByRole("button", { name: "14 天" }).click();
+  await expect(page.getByText("第 1 / 3 页")).toBeVisible();
+
+  const jumpInput = page.getByRole("spinbutton", { name: "页码" });
+  await jumpInput.fill("2");
+  await jumpInput.press("Enter");
+  await expect(page).toHaveURL(/page=2/);
+  await expect(page.getByText("第 2 / 3 页")).toBeVisible();
+  await expect(page.getByText("page-2-repo-1", { exact: true }).first()).toBeVisible();
+  expect(requests.some((query) => query.includes("page=2"))).toBe(true);
+
+  const requestCount = requests.length;
+  for (const invalidPage of ["0", "4", "1.5", ""]) {
+    await jumpInput.fill(invalidPage);
+    await page.getByRole("button", { name: "跳转", exact: true }).click();
+    await expect(page.locator(".pagination-error")).toHaveText("请输入 1 到 3 之间的页码");
+    expect(requests.length).toBe(requestCount);
+    await expect(page).toHaveURL(/page=2/);
+  }
 });
 
 test("移动端榜单无横向溢出", async ({ page }, testInfo) => {
