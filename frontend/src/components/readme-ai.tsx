@@ -13,7 +13,7 @@ const subscribeLocation = () => () => undefined;
 const settingsLocation = () => `/settings/ai?returnTo=${encodeURIComponent(window.location.pathname + window.location.search + "#readme-heading")}`;
 const serverSettingsLocation = () => "/settings/ai";
 
-export function ReadmeAi({ markdown }: { markdown: string }) {
+export function ReadmeAi({ markdown, imageBaseUrl }: { markdown: string; imageBaseUrl: string }) {
   const [result, setResult] = useState<AiResult | null>(null);
   const [translated, setTranslated] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -83,8 +83,8 @@ export function ReadmeAi({ markdown }: { markdown: string }) {
     {busy ? <div className="ai-readme-progress" role="status"><span>{progress.message}</span><progress aria-label="翻译进度" value={progress.completed} max={progress.total} /><button className="ai-button" onClick={() => pending.current?.abort()}><X size={15} />取消</button></div> : null}
     {error ? <p className="ai-error ai-readme-notice" role="alert">{error}</p> : null}
     <article className="readme-content">
-      {result && translated ? <section className="ai-summary" aria-label="AI 摘要"><div className="ai-summary-title"><strong><Sparkles size={17} />AI 摘要</strong><small>{modelLabel} · AI 生成，请结合原文核对</small></div><MarkdownContent content={result.summary} /></section> : null}
-      <MarkdownContent content={translated && result ? result.translation : markdown} />
+      {result && translated ? <section className="ai-summary" aria-label="AI 摘要"><div className="ai-summary-title"><strong><Sparkles size={17} />AI 摘要</strong><small>{modelLabel} · AI 生成，请结合原文核对</small></div><MarkdownContent content={result.summary} imageBaseUrl={imageBaseUrl} /></section> : null}
+      <MarkdownContent content={translated && result ? result.translation : markdown} imageBaseUrl={imageBaseUrl} />
     </article>
   </>;
 }

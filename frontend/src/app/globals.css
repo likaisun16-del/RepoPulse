@@ -1309,6 +1309,14 @@ html[data-theme="dark"] .theme-toggle-glow {
   vertical-align: middle;
 }
 
+.readme-loading {
+  display: grid;
+  min-height: 220px;
+  place-items: center;
+  color: var(--muted);
+  font-size: 14px;
+}
+
 .readme-content blockquote {
   padding: 8px 16px;
   color: var(--muted);

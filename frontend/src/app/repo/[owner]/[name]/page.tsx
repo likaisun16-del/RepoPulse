@@ -11,14 +11,14 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { Suspense } from "react";
 
 import { RepositoryAvatar } from "@/components/repository-avatar";
-import { RepositoryReadme } from "@/components/repository-readme";
+import { RepositoryReadme, RepositoryReadmeFallback } from "@/components/repository-readme";
 import { StarChart } from "@/components/star-chart";
-import { fetchReadme, fetchRepository, fetchSnapshots } from "@/lib/api";
+import { fetchRepository, fetchSnapshots } from "@/lib/api";
 import { formatDate, formatNumber } from "@/lib/format";
 import { getRepositoryDescription } from "@/lib/repository-copy";
-import type { ReadmeResponse } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
@@ -50,18 +50,15 @@ export default async function RepositoryPage({ params, searchParams }: Repositor
   const { owner, name } = await params;
   const query = await searchParams;
   const returnTo = safeReturnTo(firstValue(query.returnTo));
-  const [repositoryResult, snapshotResult, readmeResult] = await Promise.allSettled([
+  const [repositoryResult, snapshotResult] = await Promise.allSettled([
     fetchRepository(owner, name),
     fetchSnapshots(owner, name, "90d"),
-    fetchReadme(owner, name),
   ]);
   if (repositoryResult.status === "rejected") notFound();
 
   const repository = repositoryResult.value;
   const description = getRepositoryDescription(repository);
   const snapshots = snapshotResult.status === "fulfilled" ? snapshotResult.value.data : [];
-  const readme: ReadmeResponse | null =
-    readmeResult.status === "fulfilled" ? readmeResult.value : null;
   const schema = {
     "@context": "https://schema.org",
     "@type": "SoftwareSourceCode",
@@ -115,7 +112,9 @@ export default async function RepositoryPage({ params, searchParams }: Repositor
 
         <StarChart owner={owner} name={name} initialData={snapshots} />
 
-        <RepositoryReadme readme={readme} />
+        <Suspense fallback={<RepositoryReadmeFallback />}>
+          <RepositoryReadme owner={owner} name={name} />
+        </Suspense>
 
         <div className="repo-metadata">
           <div className="section-heading"><div><span>项目档案</span><h2>仓库信息</h2></div><p>数据来自公开的 GitHub 仓库元数据。</p></div>
