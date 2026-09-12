@@ -1,5 +1,63 @@
 import { expect, type Page, test } from "@playwright/test";
 
+const ONE_PIXEL_PNG = Buffer.from(
+  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
+  "base64",
+);
+
+function rankingResponse(
+  repositories: Array<{ owner: string; name: string; ownerGithubId: number | null }>,
+) {
+  return {
+    data: repositories.map((repository, index) => ({
+      rank: index + 1,
+      previous_rank: index + 1,
+      full_name: `${repository.owner}/${repository.name}`,
+      owner: repository.owner,
+      owner_github_id: repository.ownerGithubId,
+      name: repository.name,
+      description: "用于头像加载测试的项目",
+      language: "TypeScript",
+      topics: ["testing"],
+      total_stars: 1_000 - index,
+      star_delta: 10 - index,
+      growth_rate: 0.01,
+      baseline_available: true,
+      last_updated_at: "2026-09-12T00:00:00Z",
+      github_url: `https://github.com/${repository.owner}/${repository.name}`,
+    })),
+    meta: {
+      period_days: 14,
+      as_of: "2026-09-12T00:00:00Z",
+      baseline_at: "2026-08-29T00:00:00Z",
+      generated_at: "2026-09-12T00:00:00Z",
+      coverage: repositories.length,
+      total: repositories.length,
+      page: 1,
+      limit: 15,
+      data_mode: "live",
+    },
+  };
+}
+
+async function loadMockRanking(
+  page: Page,
+  repositories: Array<{ owner: string; name: string; ownerGithubId: number | null }>,
+) {
+  await page.route("**/api/v1/rankings?**", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      headers: { "Access-Control-Allow-Origin": "*" },
+      body: JSON.stringify(rankingResponse(repositories)),
+    });
+  });
+  await page.goto("/?period=7");
+  await enterRanking(page);
+  await page.getByRole("button", { name: "14 天" }).click();
+  await expect(page.getByRole("heading", { name: "14 天增长排行" })).toBeVisible();
+}
+
 async function enterRanking(page: Page) {
   const startButton = page.getByRole("button", { name: "现在开始" });
   if (await startButton.isVisible()) await startButton.click();
@@ -145,4 +203,59 @@ test("详情页显示 README 内容和来源", async ({ page }) => {
   );
   await expect(sourceLink).toHaveAttribute("target", "_blank");
   await expect(sourceLink).toHaveAttribute("rel", "noreferrer");
+});
+
+test("头像首次未缓存时会退避重试并自动恢复", async ({ page }) => {
+  await page.clock.install();
+  let avatarRequests = 0;
+  await page.route("**/api/v1/avatars/987654321*", async (route) => {
+    avatarRequests += 1;
+    if (avatarRequests === 1) {
+      await route.fulfill({ status: 404, headers: { "Access-Control-Allow-Origin": "*" } });
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: "image/png",
+      headers: { "Access-Control-Allow-Origin": "*" },
+      body: ONE_PIXEL_PNG,
+    });
+  });
+  await loadMockRanking(page, [
+    { owner: "avatar-owner", name: "retry-success", ownerGithubId: 987654321 },
+  ]);
+
+  const avatar = page.getByAltText("avatar-owner 头像").first();
+  await expect(avatar).toHaveAttribute("src", "/avatar-fallback.svg");
+  await page.clock.fastForward(1_000);
+
+  await expect.poll(() => avatarRequests).toBe(2);
+  await expect(avatar).toHaveAttribute("src", /\/avatars\/987654321\?retry=1$/);
+});
+
+test("头像重试耗尽或缺少 owner ID 时保持默认图", async ({ page }) => {
+  await page.clock.install();
+  let avatarRequests = 0;
+  await page.route("**/api/v1/avatars/123456789*", async (route) => {
+    avatarRequests += 1;
+    await route.fulfill({ status: 404, headers: { "Access-Control-Allow-Origin": "*" } });
+  });
+  await loadMockRanking(page, [
+    { owner: "missing-owner", name: "retry-failure", ownerGithubId: 123456789 },
+    { owner: "unknown-owner", name: "no-owner-id", ownerGithubId: null },
+  ]);
+
+  const missingAvatar = page.getByAltText("missing-owner 头像").first();
+  const unknownAvatar = page.getByAltText("unknown-owner 头像").first();
+  await expect(missingAvatar).toHaveAttribute("src", "/avatar-fallback.svg");
+  await expect(unknownAvatar).toHaveAttribute("src", "/avatar-fallback.svg");
+
+  for (const [index, delay] of [1_000, 2_000, 4_000, 8_000].entries()) {
+    await page.clock.fastForward(delay);
+    await expect.poll(() => avatarRequests).toBe(index + 2);
+  }
+
+  await expect.poll(() => avatarRequests).toBe(5);
+  await expect(missingAvatar).toHaveAttribute("src", "/avatar-fallback.svg");
+  await expect(unknownAvatar).toHaveAttribute("src", "/avatar-fallback.svg");
 });

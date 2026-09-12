@@ -1,7 +1,6 @@
 from typing import Annotated
 
-from celery import current_app
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, BackgroundTasks, Depends, Query
 from fastapi.responses import FileResponse, Response
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -11,16 +10,17 @@ from app.database import async_session_factory, get_session
 from app.models import Repository
 from app.schemas import ChartRange, ReadmeResponse, RepositoryResponse, SnapshotSeriesResponse
 from app.services.catalog import CatalogService
+from app.task_queue import enqueue_avatar_refresh
 
 router = APIRouter(tags=["repositories"])
 
 
 @router.get("/avatars/{owner_id}")
-async def get_avatar(owner_id: int) -> Response:
+async def get_avatar(owner_id: int, background_tasks: BackgroundTasks) -> Response:
     path = avatar_path(owner_id)
     if path.exists():
         if not is_fresh(path):
-            current_app.send_task("worker.app.avatar_tasks.refresh_avatar", args=[owner_id])
+            background_tasks.add_task(enqueue_avatar_refresh, owner_id)
         return FileResponse(
             path,
             media_type="image/jpeg",
@@ -31,7 +31,7 @@ async def get_avatar(owner_id: int) -> Response:
             select(Repository.owner_avatar_url).where(Repository.owner_github_id == owner_id)
         )
     if known:
-        current_app.send_task("worker.app.avatar_tasks.refresh_avatar", args=[owner_id])
+        background_tasks.add_task(enqueue_avatar_refresh, owner_id)
     return Response(status_code=404, headers={"Cache-Control": "no-store"})
 
 

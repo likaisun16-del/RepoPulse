@@ -80,7 +80,11 @@ export default async function RepositoryPage({ params, searchParams }: Repositor
             <ArrowLeft size={16} /> 返回增长榜
           </Link>
           <div className="repo-title-row">
-            <RepositoryAvatar owner={repository.owner} size={58} />
+            <RepositoryAvatar
+              owner={repository.owner}
+              ownerGithubId={repository.owner_github_id}
+              size={58}
+            />
             <div className="repo-title">
               <span>{repository.owner}</span>
               <h1>{repository.name}</h1>
